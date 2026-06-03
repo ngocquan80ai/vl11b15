@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Học liệu Tương tác: Bài 15 - Thực hành Đo tốc độ truyền âm</title>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vuedraggable@next/dist/vuedraggable.umd.min.js"></script>
+
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            startup: { typeset: false }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        .animate-fade-in { animation: fadeIn 0.35s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        [v-cloak] { display: none; }
+        body { background-color: #f8fafc; overflow-x: hidden; }
+        .math-box mjx-container { overflow-x: auto; overflow-y: hidden; max-width: 100%; }
+        
+        /* Hiệu ứng kéo thả */
+        .sortable-ghost { opacity: 0.4; border: 2px dashed #94a3b8; }
+        .drag-item { cursor: grab; }
+        .drag-item:active { cursor: grabbing; }
+        .no-select { user-select: none; -webkit-user-select: none; }
+        
+        /* CSS Ống nước mô phỏng */
+        .glass-tube {
+            background: linear-gradient(to right, rgba(255,255,255,0.2), rgba(255,255,255,0.8), rgba(255,255,255,0.2));
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+        }
+        .water-fill {
+            background: linear-gradient(to right, #60a5fa, #3b82f6, #2563eb);
+            transition: height 0.1s linear;
+        }
+        .resonance-glow {
+            animation: pulse-glow 0.8s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 5px #ef4444; background-color: #fee2e2; }
+            100% { box-shadow: 0 0 20px #ef4444; background-color: #fca5a5; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 p-4 md:p-8 font-sans">
+
+    <div id="app" v-cloak class="max-w-6xl mx-auto bg-white rounded-xl shadow-xl overflow-hidden p-6 md:p-8 border border-slate-100 animate-fade-in">
+        
+        <h1 class="text-3xl font-extrabold text-center text-blue-700 mb-2 uppercase tracking-wide">
+            Bài 15: Thực hành Đo Tốc Độ Truyền Âm
+        </h1>
+        <p class="text-center text-gray-500 mb-8 font-medium">
+            Xác định tốc độ truyền âm trong không khí bằng hiện tượng cộng hưởng sóng dừng
+        </p>
+
+        <div class="flex flex-wrap justify-center gap-2 mb-8 border-b pb-4">
+            <button v-for="tab in tabs" :key="tab.id" @click="switchTab(tab.id)"
+                :class="['px-6 py-2.5 font-bold rounded-full transition-all duration-300', 
+                         activeTab === tab.id ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-800']">
+                {{ tab.name }}
+            </button>
+        </div>
+
+        <div v-show="activeTab === 1" class="animate-fade-in space-y-6">
+            <h2 class="text-2xl font-bold text-blue-800 mb-4 text-center">Hoạt động: Lắp ráp Dụng cụ Thí nghiệm</h2>
+            <p class="text-center text-gray-600 mb-6">Em hãy kéo các thẻ mô tả <strong>chức năng</strong> thả vào đúng <strong>bộ phận/thiết bị</strong> tương ứng trong sơ đồ thí nghiệm.</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="md:col-span-3 bg-slate-100 rounded-xl p-4 border border-slate-200 shadow-sm flex flex-col mb-4">
+                    <h3 class="text-lg font-bold text-slate-700 mb-3 text-center">Kho thẻ Chức năng</h3>
+                    <draggable v-model="dragData.unassigned" group="cards" item-key="id" class="flex flex-wrap gap-3 min-h-[60px] justify-center p-2">
+                        <template #item="{element}">
+                            <div class="drag-item bg-white px-4 py-3 rounded-lg border border-gray-300 shadow-sm text-sm font-medium text-gray-800 hover:shadow-md transition-shadow max-w-sm text-center">
+                                {{ element.text }}
+                            </div>
+                        </template>
+                    </draggable>
+                </div>
+
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-200 shadow-sm flex flex-col">
+                    <h3 class="font-bold text-blue-800 text-lg mb-3 text-center border-b border-blue-200 pb-2">🔈 Loa & Máy phát âm tần</h3>
+                    <draggable v-model="dragData.zone_loa" group="cards" item-key="id" class="flex-1 min-h-[120px] space-y-3 p-2 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50/50">
+                        <template #item="{element}">
+                            <div class="drag-item bg-white p-2 rounded-lg border border-blue-300 shadow-sm text-xs font-medium text-blue-900 text-center">{{ element.text }}</div>
+                        </template>
+                    </draggable>
+                </div>
+
+                <div class="bg-indigo-50 rounded-xl p-4 border border-indigo-200 shadow-sm flex flex-col">
+                    <h3 class="font-bold text-indigo-800 text-lg mb-3 text-center border-b border-indigo-200 pb-2">🧪 Ống cộng hưởng & Mặt nước</h3>
+                    <draggable v-model="dragData.zone_ong" group="cards" item-key="id" class="flex-1 min-h-[120px] space-y-3 p-2 border-2 border-dashed border-indigo-300 rounded-lg bg-indigo-50/50">
+                        <template #item="{element}">
+                            <div class="drag-item bg-white p-2 rounded-lg border border-indigo-300 shadow-sm text-xs font-medium text-indigo-900 text-center">{{ element.text }}</div>
+                        </template>
+                    </draggable>
+                </div>
+
+                <div class="bg-green-50 rounded-xl p-4 border border-green-200 shadow-sm flex flex-col">
+                    <h3 class="font-bold text-green-800 text-lg mb-3 text-center border-b border-green-200 pb-2">📏 Thước đo li độ</h3>
+                    <draggable v-model="dragData.zone_thuoc" group="cards" item-key="id" class="flex-1 min-h-[120px] space-y-3 p-2 border-2 border-dashed border-green-300 rounded-lg bg-green-50/50">
+                        <template #item="{element}">
+                            <div class="drag-item bg-white p-2 rounded-lg border border-green-300 shadow-sm text-xs font-medium text-green-900 text-center">{{ element.text }}</div>
+                        </template>
+                    </draggable>
+                </div>
+            </div>
+
+            <div class="flex flex-col items-center mt-2">
+                <button @click="checkDragDrop" class="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow hover:bg-indigo-700 transition-colors">
+                    Kiểm tra kết quả
+                </button>
+                <div v-if="dragFeedback" :class="['mt-4 px-6 py-3 rounded-lg font-semibold w-full text-center max-w-2xl border', dragIsCorrect ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300']">
+                    {{ dragFeedback }}
+                </div>
+            </div>
+        </div>
+
+        <div v-show="activeTab === 2" class="animate-fade-in space-y-6">
+            <h2 class="text-2xl font-bold text-blue-800 border-b pb-2">Nguyên lí Cộng hưởng & Cơ sở Lí thuyết</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-50 p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="font-bold text-blue-800 text-lg mb-3 flex items-center">
+                        <span class="bg-blue-200 text-blue-800 rounded-full w-7 h-7 flex items-center justify-center mr-2 text-sm">1</span>
+                        Nguyên lí Cộng hưởng Sóng dừng
+                    </h3>
+                    <p class="text-gray-700 leading-relaxed mb-3 text-sm flex-1">
+                        Ống thí nghiệm có chứa nước tạo thành một cột không khí có <strong>một đầu hở (miệng ống)</strong> và <strong>một đầu kín (mặt nước)</strong> đóng vai trò làm vật cản phản xạ âm.
+                    </p>
+                    <p class="text-gray-700 leading-relaxed mb-3 text-sm flex-1">
+                        Khi xả dần nước, chiều dài $L$ của cột khí tăng dần. Khi $L$ thoả mãn điều kiện sóng dừng $L = (2n+1)\frac{\lambda}{4}$, tại miệng ống hình thành một <strong>bụng sóng</strong>, gây ra hiện tượng cộng hưởng $\rightarrow$ <strong>Âm thanh nghe được to nhất</strong>.
+                    </p>
+                </div>
+
+                <div class="bg-indigo-50 p-5 rounded-xl border border-indigo-200 shadow-sm math-box flex flex-col justify-center">
+                    <h3 class="font-bold text-indigo-800 text-lg mb-3 flex items-center">
+                        <span class="bg-indigo-200 text-indigo-800 rounded-full w-7 h-7 flex items-center justify-center mr-2 text-sm">2</span>
+                        Công thức đo lường
+                    </h3>
+                    <p class="text-indigo-900 text-sm mb-2 font-semibold">Khoảng cách giữa hai lần liên tiếp nghe âm to nhất ($l_1$ và $l_2$) chính là khoảng cách giữa 2 nút sóng:</p>
+                    <div class="bg-white p-2.5 rounded border border-indigo-300 text-center text-lg mb-4 text-indigo-800 font-bold">
+                        $$d = l_2 - l_1 = \frac{\lambda}{2}$$
+                    </div>
+                    <p class="text-indigo-900 text-sm mb-2 font-semibold">Từ đó, biết tần số $f$ của máy phát, tính tốc độ truyền âm $v$:</p>
+                    <div class="bg-white p-2.5 rounded border border-indigo-300 text-center text-lg text-indigo-800 font-bold">
+                        $$v = \lambda \cdot f = 2(l_2 - l_1)f$$
+                    </div>
+                </div>
+
+                <div class="bg-red-50 p-5 rounded-xl border border-red-200 shadow-sm md:col-span-2">
+                    <h3 class="font-bold text-red-800 text-lg mb-3 flex items-center">
+                        ❓ Hỏi - Đáp: Xử lí Sai số Thực nghiệm
+                    </h3>
+                    <p class="text-red-900 text-sm leading-relaxed font-bold mb-1">
+                        Tại sao không đo vị trí âm to nhất lần đầu ($l_1$) rồi nhân 4 để tìm $\lambda$ cho nhanh mà phải đo hai lần $l_1, l_2$?
+                    </p>
+                    <p class="text-red-900 text-sm leading-relaxed bg-white p-3 rounded border border-red-200">
+                        <strong>Giải đáp:</strong> Trong thực tế, do hiệu ứng mép, bụng sóng không nằm vừa khít tại miệng ống mà hơi nhô ra ngoài một đoạn $\Delta l$. 
+                        Do đó $l_1$ thực tế đo được sẽ bị thiếu một chút so với lí thuyết. Phép trừ <strong>$(l_2 - l_1)$</strong> sẽ giúp <strong>triệt tiêu hoàn toàn lượng sai số hệ thống $\Delta l$</strong> này, đảm bảo khoảng cách $d$ đo được hoàn toàn chính xác là $\lambda/2$.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div v-show="activeTab === 3" class="animate-fade-in no-select">
+            <h2 class="text-2xl font-bold text-indigo-800 mb-6 text-center border-b pb-2">Phòng Lab Ảo: Thí nghiệm Ống Cộng Hưởng</h2>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-4 bg-slate-50 p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-6 h-fit">
+                    
+                    <h3 class="text-base font-bold text-gray-800 border-b pb-1">Bảng điều khiển</h3>
+                    
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-bold text-gray-700">Tần số ($f$):</span>
+                            <span class="text-blue-600 font-mono font-bold">{{ simParams.f }} Hz</span>
+                        </div>
+                        <input type="range" v-model.number="simParams.f" min="500" max="1500" step="50" @input="updateExperiment" class="w-full accent-blue-600">
+                        <p class="text-[10px] text-gray-500 mt-1">Gợi ý: Đổi $f$ sẽ làm dịch chuyển các mốc cộng hưởng trên đồ thị.</p>
+                    </div>
+
+                    <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200 shadow-inner">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-bold text-indigo-900">Hạ mực nước ($L$):</span>
+                            <span class="text-indigo-700 font-mono text-lg font-bold">{{ simParams.L.toFixed(1) }} cm</span>
+                        </div>
+                        <input type="range" v-model.number="simParams.L" min="0" max="100" step="0.1" @input="updateExperiment" class="w-full accent-indigo-600">
+                    </div>
+
+                    <div class="h-20 flex items-center justify-center rounded-lg border-2 transition-all duration-100" 
+                         :class="isResonating ? 'resonance-glow border-red-500' : 'bg-white border-slate-300 shadow-sm'">
+                        <span v-if="isResonating" class="font-extrabold text-red-600 text-xl uppercase tracking-wide flex items-center gap-2">
+                            🔊 Âm to nhất!
+                        </span>
+                        <span v-else class="text-gray-400 font-bold text-sm">Âm thanh bình thường</span>
+                    </div>
+                    
+                    <p class="text-xs text-slate-500 italic text-center mt-2 border-t pt-2">
+                        Ghi chú: Hãy nhìn vào đồ thị bên phải để xác định tọa độ $l_1, l_2$ khi chuông báo "Âm to nhất" bật sáng.
+                    </p>
+
+                </div>
+
+                <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-md flex flex-col items-center py-6 h-[480px]">
+                    <span class="text-xl mb-1">🔈</span>
+                    <span class="text-[10px] font-bold text-gray-500 mb-2 text-center">Nguồn Âm</span>
+                    
+                    <div class="relative w-16 flex-1 rounded-b-3xl border-4 border-t-0 border-slate-300 glass-tube overflow-hidden flex flex-col justify-end">
+                        <div class="w-full water-fill relative" :style="{ height: (100 - simParams.L) + '%' }">
+                            <div class="absolute top-0 left-0 right-0 h-1 bg-white/50"></div> </div>
+                        <div class="absolute top-0 bottom-0 left-0 w-2 border-r border-black/20 flex flex-col justify-between py-1">
+                            <div class="w-full h-px bg-black/40"></div>
+                            <div class="w-full h-px bg-black/40"></div>
+                            <div class="w-full h-px bg-black/40"></div>
+                            <div class="w-full h-px bg-black/40"></div>
+                        </div>
+                    </div>
+                    
+                    <span class="text-[10px] font-bold text-blue-600 mt-2">Ống & Nước</span>
+                </div>
+
+                <div class="lg:col-span-6 bg-white p-4 rounded-xl border border-gray-200 shadow-md relative flex flex-col justify-between min-h-[480px]">
+                    <div class="flex justify-between items-center mb-2 px-2">
+                        <span class="text-sm font-bold text-slate-600">Đồ thị Cường độ Âm thanh theo Chiều dài L</span>
+                    </div>
+                    <div class="flex-1 relative">
+                        <canvas id="resonanceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-show="activeTab === 4" class="animate-fade-in space-y-6">
+            <h2 class="text-2xl font-bold text-blue-800 mb-4 text-center border-b pb-2">Đánh giá & Khắc sâu kiến thức</h2>
+            
+            <div class="space-y-6">
+                <div v-for="(q, qIdx) in quizData" :key="qIdx" class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                    <h3 class="font-bold text-base text-gray-800 mb-3 flex items-start">
+                        <span class="bg-blue-600 text-white rounded-full w-7 h-7 flex items-center justify-center shrink-0 mr-3 mt-0.5 text-xs">{{ qIdx + 1 }}</span>
+                        <span v-html="q.question" class="leading-relaxed"></span>
+                    </h3>
+                    
+                    <div class="space-y-2.5 ml-10">
+                        <label v-for="(opt, optIdx) in q.options" :key="optIdx" 
+                            class="flex items-start p-3 rounded-lg border cursor-pointer text-sm transition-all"
+                            :class="[
+                                q.selected === optIdx ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-gray-200 hover:bg-gray-100',
+                                q.checked && opt.isCorrect ? 'ring-2 ring-green-500 bg-green-50' : '',
+                                q.checked && q.selected === optIdx && !opt.isCorrect ? 'ring-2 ring-red-500 bg-red-50' : ''
+                            ]">
+                            <input type="radio" :name="'quiz_ans_' + qIdx" :value="optIdx" v-model="q.selected" :disabled="q.checked" class="mt-0.5 w-4 h-4 text-blue-600">
+                            <span class="ml-3 text-gray-700 font-medium" v-html="opt.text"></span>
+                        </label>
+                    </div>
+
+                    <div class="ml-10 mt-3.5">
+                        <button v-if="!q.checked" @click="checkAnswer(qIdx)" :disabled="q.selected === null" 
+                            class="px-6 py-2 bg-blue-600 text-white font-bold rounded shadow hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs transition-colors">
+                            Xác nhận chọn
+                        </button>
+
+                        <div v-if="q.checked" class="mt-3 p-4 rounded-lg border-l-4 animate-fade-in text-sm math-box"
+                            :class="q.options[q.selected].isCorrect ? 'bg-green-50 border-green-500 text-green-900' : 'bg-red-50 border-red-500 text-red-900'">
+                            <p class="font-bold flex items-center mb-1">
+                                <span v-if="q.options[q.selected].isCorrect" class="mr-1">✅ ĐÚNG:</span>
+                                <span v-else class="mr-1">❌ SAI LẦM:</span>
+                            </p>
+                            <p v-html="q.options[q.selected].feedback" class="leading-relaxed"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const app = Vue.createApp({
+            data() {
+                return {
+                    tabs: [
+                        { id: 1, name: 'Khởi động' },
+                        { id: 2, name: 'Lí thuyết Thực hành' },
+                        { id: 3, name: 'Phòng Lab Ảo' },
+                        { id: 4, name: 'Trắc nghiệm đánh giá' }
+                    ],
+                    activeTab: 1,
+                    
+                    // Tab 1 Data
+                    dragData: {
+                        unassigned: [
+                            { id: 1, text: 'Tạo ra cột không khí có chiều dài thay đổi được.', type: 'ong' },
+                            { id: 2, text: 'Đóng vai trò là đầu bịt kín (nút sóng) để phản xạ âm.', type: 'ong' },
+                            { id: 3, text: 'Cung cấp nguồn sóng âm có tần số f đã biết trước.', type: 'loa' },
+                            { id: 4, text: 'Đóng vai trò là nguồn kích thích gây ra giao thoa sóng.', type: 'loa' },
+                            { id: 5, text: 'Xác định chính xác tọa độ mực nước khi cộng hưởng.', type: 'thuoc' }
+                        ],
+                        zone_ong: [],
+                        zone_loa: [],
+                        zone_thuoc: []
+                    },
+                    dragFeedback: '',
+                    dragIsCorrect: false,
+
+                    // Tab 3 Data (Đã xóa bộ ghi số liệu tự động để HS tự quan sát)
+                    simParams: {
+                        f: 850,       // Hz
+                        L: 0,         // Chiều dài cột khí (cm)
+                        v_real: 34000 // Tốc độ âm 340 m/s = 34000 cm/s
+                    },
+                    isResonating: false,
+                    myChart: null, 
+
+                    // Tab 4 Data (Escape MathJax \\\\)
+                    quizData: [
+                        {
+                            question: 'Trong thí nghiệm đo tốc độ truyền âm, tại sao ta phải đo khoảng cách giữa 2 vị trí liên tiếp nghe âm to nhất ($l_2 - l_1$) thay vì chỉ đo vị trí âm to nhất lần đầu ($l_1$)?',
+                            options: [
+                                { text: 'Để tránh sai số ngẫu nhiên do thước đo bị cong vênh.', isCorrect: false, feedback: '<b>Sai:</b> Thước đo cong vênh là sai số dụng cụ, không khắc phục được bằng phép trừ này.' },
+                                { text: 'Để triệt tiêu sai số hệ thống do bụng sóng thực tế nằm lệch ra ngoài miệng ống một chút.', isCorrect: true, feedback: '<b>Hoàn toàn chính xác!</b> Do hiệu ứng mép, bụng sóng nhô ra ngoài miệng ống một đoạn $\\Delta l$. Phép trừ $l_2 - l_1$ giúp lượng $\\Delta l$ này triệt tiêu hoàn toàn, giúp kết quả $\\lambda/2$ vô cùng chính xác.' },
+                                { text: 'Để bù đắp cho sự suy giảm năng lượng của sóng âm.', isCorrect: false, feedback: '<b>Sai:</b> Năng lượng giảm làm âm nhỏ đi chứ không làm thay đổi vị trí cộng hưởng.' },
+                                { text: 'Vì tần số của máy phát âm tần thay đổi liên tục trong quá trình đo.', isCorrect: false, feedback: '<b>Sai:</b> Tần số máy phát được cài đặt ổn định không đổi.' }
+                            ],
+                            selected: null,
+                            checked: false
+                        },
+                        {
+                            question: 'Một học sinh làm thí nghiệm với nguồn âm có tần số $f = 850 \\text{ Hz}$. Xác định được vị trí âm to nhất lần 1 ở $l_1 = 12 \\text{ cm}$ và lần 2 ở $l_2 = 32 \\text{ cm}$. Tốc độ truyền âm học sinh này đo được là:',
+                            options: [
+                                { text: '$340 \\text{ m/s}$.', isCorrect: true, feedback: '<b>Tuyệt vời!</b> Vận dụng công thức: Bước sóng $\\lambda = 2(l_2 - l_1) = 2 \\cdot (32 - 12) = 40 \\text{ cm} = 0,4 \\text{ m}$. Tốc độ âm thanh $v = \\lambda \\cdot f = 0,4 \\cdot 850 = 340 \\text{ m/s}$.' },
+                                { text: '$170 \\text{ m/s}$.', isCorrect: false, feedback: '<b>Lỗi quên nhân đôi:</b> Bạn mới tính được khoảng cách $d = l_2 - l_1 = 20 \\text{ cm}$. Phải nhân đôi lên mới ra bước sóng $\\lambda$.' },
+                                { text: '$34 \\text{ m/s}$.', isCorrect: false, feedback: '<b>Lỗi đổi đơn vị:</b> Hãy kiểm tra lại cách đổi từ cm sang m.' },
+                                { text: '$680 \\text{ m/s}$.', isCorrect: false, feedback: '<b>Sai công thức:</b> Hãy kiểm tra lại biểu thức tính $v$.' }
+                            ],
+                            selected: null,
+                            checked: false
+                        },
+                        {
+                            question: 'Trong quá trình hạ từ từ mực nước, khoảng cách giữa 3 lần liên tiếp học sinh nghe thấy âm thanh to nhất tương ứng với:',
+                            options: [
+                                { text: 'Một phần tư bước sóng ($\\lambda/4$).', isCorrect: false, feedback: '<b>Sai:</b> Đây là khoảng cách từ Nút đến Bụng.' },
+                                { text: 'Một nửa bước sóng ($\\lambda/2$).', isCorrect: false, feedback: '<b>Sai:</b> Đây chỉ là khoảng cách giữa 2 lần liên tiếp (2 bụng sóng).' },
+                                { text: 'Một bước sóng ($\\lambda$).', isCorrect: true, feedback: '<b>Chính xác!</b> Tránh được lỗi "trồng cây". Hai lần âm to liên tiếp cách nhau $\\lambda/2$. Vậy 3 lần liên tiếp sẽ tạo ra 2 khoảng, tổng chiều dài là $2 \\cdot \\frac{\\lambda}{2} = \\lambda$.' },
+                                { text: 'Hai bước sóng ($2\\lambda$).', isCorrect: false, feedback: '<b>Lỗi đếm số:</b> 3 điểm chỉ tạo ra 2 khoảng thôi.' }
+                            ],
+                            selected: null,
+                            checked: false
+                        },
+                        {
+                            question: 'Nếu học sinh xả nước quá nhanh khiến mực nước trong ống hạ xuống đột ngột, điều này có thể dẫn đến hậu quả gì cho thí nghiệm?',
+                            options: [
+                                { text: 'Sóng dừng bị phá vỡ hoàn toàn, không thể hình thành lại.', isCorrect: false, feedback: '<b>Sai:</b> Mực nước dừng lại đúng chỗ thì sóng dừng vẫn hình thành.' },
+                                { text: 'Tần số của sóng âm sẽ bị thay đổi theo hiệu ứng Doppler.', isCorrect: false, feedback: '<b>Sai bản chất:</b> Tần số $f$ do loa phát ra không đổi.' },
+                                { text: 'Dễ bị trượt qua (bỏ lỡ) vị trí cộng hưởng, gây sai số lớn khi đọc thước.', isCorrect: true, feedback: '<b>Đúng!</b> Đỉnh cộng hưởng (âm to nhất) chỉ xuất hiện trong một khoảng chiều dài rất hẹp. Xả nước nhanh sẽ làm ta không kịp nghe và nhìn để chốt số liệu trên thước, gây sai số ngẫu nhiên rất lớn.' },
+                                { text: 'Nước sủi bọt làm thay đổi tốc độ truyền âm.', isCorrect: false, feedback: '<b>Sai:</b> Sóng truyền trong cột không khí bên trên mặt nước, sủi bọt dưới nước không ảnh hưởng nhiều.' }
+                            ],
+                            selected: null,
+                            checked: false
+                        }
+                    ]
+                }
+            },
+            computed: {
+                lambdaSim() {
+                    return this.simParams.v_real / this.simParams.f; // cm
+                },
+                // Tạo danh sách các đỉnh cộng hưởng L_n = (2n+1)*lambda/4
+                resonancePeaks() {
+                    let peaks = [];
+                    let n = 0;
+                    while (true) {
+                        let val = (2 * n + 1) * this.lambdaSim / 4;
+                        if (val > 105) break;
+                        peaks.push(val);
+                        n++;
+                    }
+                    return peaks;
+                }
+            },
+            methods: {
+                switchTab(tabId) {
+                    this.activeTab = tabId;
+                    this.triggerMathJax();
+                    if (tabId === 3) {
+                        setTimeout(() => {
+                            if (!this.myChart) {
+                                this.initChart();
+                            } else {
+                                this.myChart.resize();
+                            }
+                            this.updateExperiment();
+                        }, 50);
+                    }
+                },
+                
+                checkDragDrop() {
+                    if (this.dragData.unassigned.length > 0) {
+                        this.dragFeedback = 'Vui lòng sắp xếp hết 5 thẻ vào 3 nhóm dụng cụ nhé!';
+                        this.dragIsCorrect = false;
+                        return;
+                    }
+                    const errOng = this.dragData.zone_ong.some(item => item.type !== 'ong');
+                    const errLoa = this.dragData.zone_loa.some(item => item.type !== 'loa');
+                    const errThuoc = this.dragData.zone_thuoc.some(item => item.type !== 'thuoc');
+
+                    if (errOng || errLoa || errThuoc) {
+                        this.dragFeedback = 'Có thẻ bị xếp sai vị trí! Chú ý: Loa cung cấp sóng & kích thích, Ống/Nước tạo môi trường phản xạ, Thước để đọc tọa độ.';
+                        this.dragIsCorrect = false;
+                    } else {
+                        this.dragFeedback = 'Tuyệt vời! Bạn đã nắm rõ chức năng của từng bộ phận trong sơ đồ thí nghiệm.';
+                        this.dragIsCorrect = true;
+                    }
+                },
+
+                triggerMathJax() {
+                    this.$nextTick(() => {
+                        if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+                            MathJax.typesetPromise().catch((err) => console.log('MathJax Error:', err));
+                        }
+                    });
+                },
+
+                checkAnswer(qIdx) {
+                    this.quizData[qIdx].checked = true;
+                    this.triggerMathJax();
+                },
+
+                // Khởi tạo đồ thị
+                initChart() {
+                    const ctx = document.getElementById('resonanceChart').getContext('2d');
+                    
+                    this.myChart = Vue.markRaw(new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            datasets: [
+                                {
+                                    // [0] Đường cường độ âm lí thuyết
+                                    label: 'Mức Cường độ Âm',
+                                    data: [],
+                                    borderColor: 'rgba(59, 130, 246, 0.8)', // Blue
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    showLine: true,
+                                    tension: 0.4,
+                                    fill: true,
+                                    backgroundColor: 'rgba(59, 130, 246, 0.1)'
+                                },
+                                {
+                                    // [1] Vị trí L hiện tại (Vạch đỏ thẳng đứng)
+                                    label: 'Mực nước L',
+                                    data: [],
+                                    borderColor: 'rgba(239, 68, 68, 1)', // Red
+                                    borderWidth: 3,
+                                    pointRadius: 6,
+                                    pointBackgroundColor: 'rgba(239, 68, 68, 1)',
+                                    showLine: true
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: false, // Update real-time
+                            scales: {
+                                x: {
+                                    type: 'linear',
+                                    min: 0,
+                                    max: 100,
+                                    title: { display: true, text: 'Chiều dài cột khí L (cm)', font: { size: 12, weight: 'bold' } },
+                                    ticks: { stepSize: 10 }
+                                },
+                                y: {
+                                    type: 'linear',
+                                    min: 0,
+                                    max: 110,
+                                    title: { display: true, text: 'Độ to Âm thanh (%)', font: { size: 12, weight: 'bold' } },
+                                    grid: { color: 'rgba(0,0,0,0.05)' }
+                                }
+                            },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: { enabled: false }
+                            }
+                        }
+                    }));
+                },
+
+                updateExperiment() {
+                    // 1. Tính toán lại đường Cường độ âm I(x) = 100 * (sin(2*pi*x/lambda))^8
+                    // Dùng lũy thừa chẵn bậc cao để tạo các đỉnh nhọn mô phỏng cộng hưởng
+                    const lam = this.lambdaSim;
+                    const curveData = [];
+                    for (let x = 0; x <= 100; x += 0.5) {
+                        let intensity = 100 * Math.pow(Math.sin((2 * Math.PI * x) / lam), 8);
+                        curveData.push({ x: x, y: intensity });
+                    }
+
+                    // 2. Kiểm tra xem L hiện tại có đang nằm trên đỉnh không (Resonance)
+                    const L = this.simParams.L;
+                    const tolerance = 1.0; // Sai số 1 cm để dễ kéo trúng
+                    
+                    let resonating = false;
+                    for (let i = 0; i < this.resonancePeaks.length; i++) {
+                        let peak = this.resonancePeaks[i];
+                        if (Math.abs(L - peak) <= tolerance) {
+                            resonating = true;
+                            break;
+                        }
+                    }
+                    this.isResonating = resonating;
+
+                    // 3. Cập nhật Chart
+                    if (this.myChart) {
+                        this.myChart.data.datasets[0].data = curveData;
+                        // Vẽ vạch đỏ tại vị trí L hiện tại
+                        this.myChart.data.datasets[1].data = [
+                            { x: L, y: 0 },
+                            { x: L, y: 100 }
+                        ];
+                        this.myChart.update('none');
+                    }
+                }
+            },
+            mounted() {
+                this.triggerMathJax();
+            }
+        });
+
+        app.component('draggable', window.vuedraggable);
+        app.mount('#app');
+    </script>
+</body>
+</html>
